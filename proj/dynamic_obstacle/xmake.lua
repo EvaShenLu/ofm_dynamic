@@ -2,6 +2,7 @@ add_rules("mode.release", "mode.debug")
 
 target("dynamic_obstacle")
     set_targetdir("build")
+    set_rundir(os.scriptdir())
 
     if is_plat("windows") then
         add_rules("plugin.vsxmake.autoupdate")

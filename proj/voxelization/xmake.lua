@@ -2,6 +2,7 @@ add_rules("mode.release", "mode.debug")
 
 target("voxelization")
     set_targetdir("build")
+    set_rundir(os.scriptdir())
 
     if is_plat("windows") then
         add_rules("plugin.vsxmake.autoupdate")
@@ -14,7 +15,6 @@ target("voxelization")
 
     add_headerfiles("*.h")
     add_files("*.cpp")
-    add_files("*.cu")
     add_includedirs(".",{public=true})
 
     add_cugencodes("compute_75")

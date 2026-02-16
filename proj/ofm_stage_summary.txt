@@ -1,0 +1,14 @@
+﻿benchmark_target=dynamic_obstacle
+timestamp=2026-02-16 16:44:49
+elapsed_seconds=30.7174724
+
+stage,count,avg_ms,min_ms,max_ms
+Advection,812,1.186452,0.828416,1.917952
+Projection 1,812,3.679624,3.032064,4.918272
+Marching Backward flowmap,812,2.135790,1.971200,3.115008
+Marching Forward flowmap,812,2.142745,1.905664,2.857984
+Impulse reconstruction,812,0.696315,0.656384,1.373184
+BFECC,812,1.998943,1.862656,3.084288
+Projection 2,812,3.458987,2.937856,4.668416
+UpdateBoundaryCondition,811,0.113697,0.109568,0.354304
+Rebuild Projection Matrix,811,0.210585,0.181248,0.609280
