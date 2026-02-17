@@ -43,20 +43,52 @@ try {
     # 保存每行输出，供后续解析阶段耗时
     $runLines = New-Object System.Collections.Generic.List[string]
     $runExitCode = 0
+    $timedOut = $false
     $prevErrorActionPreference = $ErrorActionPreference
     try {
         # 原生程序 stderr 应作为日志行捕获，而非导致脚本终止
         $ErrorActionPreference = "Continue"
-        # 执行 xmake run，2>&1 将 stderr 重定向到 stdout；$LASTEXITCODE 来自 xmake 而非管道
-        $output = xmake run $Target 2>&1
-        $runExitCode = $LASTEXITCODE
-        # 逐行收集输出，ErrorRecord 需 ToString() 转为字符串
-        foreach ($line in $output) {
-            $lineStr = if ($line -is [System.Management.Automation.ErrorRecord]) { $line.ToString() } else { "$line" }
-            $runLines.Add($lineStr)
+        # 使用独立进程执行并在 Duration 秒后强制停止（硬超时）。
+        $stdoutPath = [System.IO.Path]::GetTempFileName()
+        $stderrPath = [System.IO.Path]::GetTempFileName()
+        try {
+            $proc = Start-Process -FilePath "xmake" -ArgumentList @("run", $Target) -WorkingDirectory $PSScriptRoot `
+                -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+
+            if ($Duration -gt 0) {
+                $exited = $proc.WaitForExit($Duration * 1000)
+                if (-not $exited) {
+                    $timedOut = $true
+                    "[$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")] timeout reached (${Duration}s), terminating process..." | Tee-Object -FilePath $LogFile -Append
+                    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                    $proc.WaitForExit()
+                }
+            } else {
+                $proc.WaitForExit()
+            }
+
+            if ($timedOut) {
+                # GNU timeout-compatible convention: 124 means timed out.
+                $runExitCode = 124
+            } else {
+                $runExitCode = $proc.ExitCode
+            }
+
+            $output = @()
+            if (Test-Path $stdoutPath) { $output += Get-Content -Path $stdoutPath -Encoding utf8 }
+            if (Test-Path $stderrPath) { $output += Get-Content -Path $stderrPath -Encoding utf8 }
+
+            foreach ($line in $output) {
+                $lineStr = "$line"
+                $runLines.Add($lineStr)
+            }
+            # 将运行输出追加到日志（头部已写入，此处始终 Append）
+            $output | Tee-Object -FilePath $LogFile -Append
         }
-        # 将 xmake 输出追加到日志（头部已写入，此处始终 Append）
-        $output | Tee-Object -FilePath $LogFile -Append
+        finally {
+            if (Test-Path $stdoutPath) { Remove-Item -Path $stdoutPath -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $stderrPath) { Remove-Item -Path $stderrPath -Force -ErrorAction SilentlyContinue }
+        }
     }
     finally {
         $ErrorActionPreference = $prevErrorActionPreference
@@ -67,6 +99,7 @@ try {
     $endTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     "[$endTimestamp] elapsed_seconds=$($sw.Elapsed.TotalSeconds)" | Tee-Object -FilePath $LogFile -Append
     "[$endTimestamp] run_exit_code=$runExitCode" | Tee-Object -FilePath $LogFile -Append
+    "[$endTimestamp] timed_out=$timedOut" | Tee-Object -FilePath $LogFile -Append
 
     # 阶段汇总：从输出中解析各计算阶段耗时并生成 CSV
     if (-not $SkipStageSummary) {
